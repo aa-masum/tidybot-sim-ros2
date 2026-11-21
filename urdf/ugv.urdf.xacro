@@ -1,0 +1,248 @@
+<?xml version="1.0"?>
+<!-- Cleaning robot (round, 34 cm, 11.5 cm tall) as Xacro/URDF for ROS 2 Humble + Gazebo Classic 11.
+     Same geometry, sensors and plugins as models/ugv.sdf, but robot_state_publisher now
+     provides all TF frames (lidar_link, low_lidar_link, wheels) and RViz can show the model.
+     Frame convention: base_link is the ROOT link, origin = centre of the body (0.055 m above floor). -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ugv">
+
+  <!-- ===================== parameters ===================== -->
+  <xacro:property name="body_r" value="0.17"/>
+  <xacro:property name="body_h" value="0.07"/>
+  <xacro:property name="body_m" value="3.0"/>
+  <xacro:property name="wheel_r" value="0.035"/>
+  <xacro:property name="wheel_w" value="0.02"/>
+  <xacro:property name="wheel_m" value="0.2"/>
+  <xacro:property name="wheel_y" value="0.15"/>
+  <xacro:property name="wheel_z" value="-0.02"/>   <!-- wheel centre is 0.035 m above floor -->
+  <xacro:property name="caster_r" value="0.015"/>
+  <xacro:property name="caster_x" value="0.12"/>
+  <xacro:property name="caster_z" value="-0.04"/>
+  <xacro:property name="lidar_z" value="0.05"/>    <!-- 0.105 m above floor -->
+  <xacro:property name="low_x" value="0.16"/>
+  <xacro:property name="low_z" value="-0.02"/>     <!-- 0.035 m above floor -->
+
+  <!-- ===================== colours (RViz) ===================== -->
+  <material name="white"><color rgba="0.93 0.93 0.95 1"/></material>
+  <material name="dark"><color rgba="0.15 0.15 0.17 1"/></material>
+  <material name="black"><color rgba="0.05 0.05 0.06 1"/></material>
+  <material name="blue"><color rgba="0.2 0.55 0.85 1"/></material>
+  <material name="green"><color rgba="0.1 0.8 0.3 1"/></material>
+  <material name="orange"><color rgba="0.95 0.5 0.1 1"/></material>
+
+  <!-- ===================== macros ===================== -->
+  <xacro:macro name="cyl_inertia" params="m r h">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${m*(3*r*r+h*h)/12}" ixy="0" ixz="0"
+               iyy="${m*(3*r*r+h*h)/12}" iyz="0" izz="${m*r*r/2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- driven wheel: continuous joint, same axis convention as the SDF robot -->
+  <xacro:macro name="wheel" params="name y">
+    <link name="${name}_wheel">
+      <xacro:cyl_inertia m="${wheel_m}" r="${wheel_r}" h="${wheel_w}"/>
+      <visual>
+        <geometry><cylinder radius="${wheel_r}" length="${wheel_w}"/></geometry>
+        <material name="black"/>
+      </visual>
+      <collision>
+        <geometry><cylinder radius="${wheel_r}" length="${wheel_w}"/></geometry>
+      </collision>
+    </link>
+    <joint name="${name}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${name}_wheel"/>
+      <origin xyz="0 ${y} ${wheel_z}" rpy="-1.5707 0 0"/>
+      <axis xyz="0 0 1"/>
+    </joint>
+    <gazebo reference="${name}_wheel">
+      <mu1>1.0</mu1>
+      <mu2>1.0</mu2>
+      <material>Gazebo/Black</material>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- frictionless ball caster -->
+  <xacro:macro name="caster" params="name x">
+    <link name="${name}_caster">
+      <visual>
+        <geometry><sphere radius="${caster_r}"/></geometry>
+        <material name="dark"/>
+      </visual>
+      <collision>
+        <geometry><sphere radius="${caster_r}"/></geometry>
+      </collision>
+    </link>
+    <joint name="${name}_caster_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}_caster"/>
+      <origin xyz="${x} 0 ${caster_z}" rpy="0 0 0"/>
+    </joint>
+    <gazebo reference="${name}_caster">
+      <mu1>0</mu1>
+      <mu2>0</mu2>
+      <material>Gazebo/DarkGrey</material>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- visual-only decoration: disc -->
+  <xacro:macro name="disc" params="name x y z r h mat gz">
+    <link name="${name}">
+      <visual>
+        <geometry><cylinder radius="${r}" length="${h}"/></geometry>
+        <material name="${mat}"/>
+      </visual>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 0"/>
+    </joint>
+    <gazebo reference="${name}"><material>${gz}</material></gazebo>
+  </xacro:macro>
+
+  <!-- visual-only decoration: box -->
+  <xacro:macro name="slab" params="name x y z sx sy sz mat gz">
+    <link name="${name}">
+      <visual>
+        <geometry><box size="${sx} ${sy} ${sz}"/></geometry>
+        <material name="${mat}"/>
+      </visual>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 0"/>
+    </joint>
+    <gazebo reference="${name}"><material>${gz}</material></gazebo>
+  </xacro:macro>
+
+  <!-- sensor frame (tiny dummy inertia so Gazebo keeps the link) -->
+  <xacro:macro name="sensor_frame" params="name x z">
+    <link name="${name}">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${x} 0 ${z}" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ===================== body ===================== -->
+  <link name="base_link">
+    <xacro:cyl_inertia m="${body_m}" r="${body_r}" h="${body_h}"/>
+    <!-- upper white shell -->
+    <visual>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
+      <geometry><cylinder radius="${body_r}" length="0.04"/></geometry>
+      <material name="white"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="${body_r}" length="${body_h}"/></geometry>
+    </collision>
+  </link>
+  <gazebo reference="base_link"><material>Gazebo/White</material></gazebo>
+
+  <!-- ===================== instances ===================== -->
+  <xacro:wheel name="left" y="${wheel_y}"/>
+  <xacro:wheel name="right" y="${-wheel_y}"/>
+  <xacro:caster name="front" x="${caster_x}"/>
+  <xacro:caster name="rear" x="${-caster_x}"/>
+
+  <xacro:disc name="body_lower" x="0" y="0" z="-0.02" r="0.172" h="0.03" mat="dark" gz="Gazebo/DarkGrey"/>
+  <xacro:disc name="top_ring" x="0" y="0" z="0.0365" r="0.13" h="0.003" mat="blue" gz="Gazebo/Blue"/>
+  <xacro:disc name="top_plate" x="0" y="0" z="0.0375" r="0.115" h="0.003" mat="white" gz="Gazebo/White"/>
+  <xacro:disc name="power_button" x="-0.07" y="0" z="0.0395" r="0.025" h="0.003" mat="green" gz="Gazebo/Green"/>
+  <xacro:disc name="lidar_turret" x="0" y="0" z="0.0475" r="0.04" h="0.025" mat="black" gz="Gazebo/Black"/>
+  <xacro:disc name="side_brush" x="0.14" y="0.1" z="-0.03" r="0.03" h="0.006" mat="orange" gz="Gazebo/Orange"/>
+  <xacro:slab name="front_bumper" x="0.158" y="0" z="0" sx="0.02" sy="0.2" sz="0.03" mat="black" gz="Gazebo/Black"/>
+
+  <xacro:sensor_frame name="lidar_link" x="0" z="${lidar_z}"/>
+  <xacro:sensor_frame name="low_lidar_link" x="${low_x}" z="${low_z}"/>
+
+  <!-- ===================== Gazebo sensors & plugins ===================== -->
+  <!-- main 360 degree lidar -->
+  <gazebo reference="lidar_link">
+    <sensor name="lidar" type="ray">
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159</min_angle>
+            <max_angle>3.14159</max_angle>
+          </horizontal>
+        </scan>
+        <range><min>0.08</min><max>8.0</max><resolution>0.01</resolution></range>
+      </ray>
+      <plugin name="lidar_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros><remapping>~/out:=scan</remapping></ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>lidar_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- low forward bumper sensor -->
+  <gazebo reference="low_lidar_link">
+    <sensor name="low_lidar" type="ray">
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>21</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.6</min_angle>
+            <max_angle>0.6</max_angle>
+          </horizontal>
+        </scan>
+        <range><min>0.03</min><max>1.0</max><resolution>0.01</resolution></range>
+      </ray>
+      <plugin name="low_lidar_plugin" filename="libgazebo_ros_ray_sensor.so">
+        <ros><remapping>~/out:=scan_low</remapping></ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>low_lidar_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <!-- differential drive: /cmd_vel in, /odom and odom -> base_link TF out -->
+  <gazebo>
+    <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <update_rate>30</update_rate>
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>${2*wheel_y}</wheel_separation>
+      <wheel_diameter>${2*wheel_r}</wheel_diameter>
+      <max_wheel_torque>5</max_wheel_torque>
+      <max_wheel_acceleration>1.0</max_wheel_acceleration>
+      <command_topic>cmd_vel</command_topic>
+      <odometry_topic>odom</odometry_topic>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>false</publish_wheel_tf>
+    </plugin>
+  </gazebo>
+
+  <!-- wheel joint angles -> /joint_states (so RViz can show the spinning wheels) -->
+  <gazebo>
+    <plugin name="joint_state_publisher" filename="libgazebo_ros_joint_state_publisher.so">
+      <update_rate>30</update_rate>
+      <joint_name>left_wheel_joint</joint_name>
+      <joint_name>right_wheel_joint</joint_name>
+    </plugin>
+  </gazebo>
+
+</robot>
