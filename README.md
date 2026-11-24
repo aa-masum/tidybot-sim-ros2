@@ -5,6 +5,7 @@ A round vacuum-style robot (Ø 34 cm) maps the house with **slam_toolbox**, plan
 coverage path with an occupancy-grid planner, drives under low furniture, detects obstacles that are
 not in its prior map, and writes a final cleaning report.
 
+![report](media/Tinybot-Sim.mp4)
 ![report](media/report.png)
 
 ## Results (one full run)
